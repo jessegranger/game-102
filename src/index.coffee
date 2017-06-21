@@ -5,14 +5,6 @@ magn = (x,y) -> sqrt((x*x)+(y*y))
 
 #include "src/brain.coffee"
 
-fakeUnit = { x: 52.5, y: 50, getGrid: -> Float64Array.from [1,0,0,0,0,0,0,0] } 
-a = new Brain fakeUnit, ChaseImpulse
-b = new Brain fakeUnit, RushImpulse, BorderImpulse
-
-$.log "Chase reaction", a.react {}, {}
-$.log "Rush+Border reaction", b.react {}, {}
-
-
 $.global.deg2rad = (d) -> d*2*PI/180
 $.global.rad2deg = (r) -> (r*180)/(2*PI)
 
@@ -406,22 +398,25 @@ world = {
 
 zero2d = $(0,0)
 inputForceScale = 2/W
-getInputForce = (unit) ->
-	dx = Input.isKeyDown("MoveRight") - Input.isKeyDown("MoveLeft")
-	dy = Input.isKeyDown("MoveDown") - Input.isKeyDown("MoveUp")
+getActionForce = (unit, action) ->
+	dx = action[1] - action[3] # Input.isKeyDown("MoveRight") - Input.isKeyDown("MoveLeft")
+	dy = action[2] - action[0] # Input.isKeyDown("MoveDown") - Input.isKeyDown("MoveUp")
 	return if dx isnt 0 or dy isnt 0
 		$(dx,dy).normalize().scale(unit.spd * inputForceScale)
 	else zero2d
 
 addForceToVelocity = (u, dx, dy, dt) ->
+	# scale the force based on duration
 	u.vx += dx * dt
 	u.vy += dy * dt
+	# clamp everything to prevent runaway values
 	_max = world.velocity.max
 	u.vx = clamp u.vx, -_max, _max 
 	u.vy = clamp u.vy, -_max, _max
 	# apply friction
 	u.vx *= _f = pow(1 - world.friction,dt)
 	u.vy *= _f
+	# if velocity is too small, consider it 0
 	abs(u.vx) < (_min = world.velocity.min) and u.vx = 0
 	abs(u.vy) < _min and u.vy = 0
 
@@ -449,12 +444,17 @@ class Unit
 			input: false
 			elapsed: 0
 			mode: 'walking'
+			action: actIdle
 		}, opts
 		@spd = clamp @spd, 0.0, 1.0
 		@str = clamp @str, 0.0, 1.0
 		@x = clamp @x, -10.0, field.width+10
 		@y = clamp @y, -10.0, field.length+10
 	tick: (dt, frame) ->
+		# if we press the AI key, let it control our movements
+		if Input.isKeyDown("UseAI")
+			@action = @brain.react world, frame
+		addForceToVelocity @, getActionForce(@, @action)..., dt
 		turnToFace @, @vx, @vy
 		@x = clamp @x + @vx, -1.0, field.width+1
 		@y = clamp @y + @vy, -1.0, field.length+1
@@ -494,7 +494,6 @@ class Unit
 		for v,i in ret
 			ret[i] = clamp 1 - ((v ? 150)/150), 0, 1 
 		ret
-	
 	getNearest: (frame) ->
 		o = undefined
 		n = Infinity
@@ -503,8 +502,6 @@ class Unit
 				v = n
 				o = k
 		return [o, n]
-
-
 
 class Football
 	constructor: (opts) ->
@@ -598,20 +595,17 @@ class ActiveUnit extends Unit
 			$.log "Collision:", nearest
 			return pause()
 
-		# if we press the AI key, let it control our movements
-		if Input.isKeyDown("UseAI")
-
-			[up, right, down, left] = @brain.react(world, frame)
-
-			Input.setKeyDown("MoveUp", up)
-			Input.setKeyDown("MoveRight", right)
-			Input.setKeyDown("MoveDown", down)
-			Input.setKeyDown("MoveLeft", left)
-
-		# keys keep adding speed the longer you hold them, up to a point
-		addForceToVelocity @, getInputForce(@)..., dt
+		if not Input.isKeyDown "UseAI"
+			@action = [
+				+Input.isKeyDown "MoveUp",
+				+Input.isKeyDown "MoveRight"
+				+Input.isKeyDown "MoveDown"
+				+Input.isKeyDown "MoveLeft"
+			]
 
 		super dt
+
+
 
 	draw: (context) ->
 		scrollToYardline @y
