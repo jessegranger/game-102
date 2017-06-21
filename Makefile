@@ -8,8 +8,9 @@ GPP_OPTS=-U '' '' '(' ',' ')' '(' ')' '\#' '' \
 	+s "'" "'" "\\" -n
 GPP_FILTER=sed -E 's/^	*\# .*$$//g' | $(GPP) $(GPP_OPTS)
 
-all: index.js brain.js
+all: lib/index.js
 
-%.js: %.coffee
+lib/index.js: src/index.coffee src/brain.coffee
+	@mkdir -p ./lib
 	@cat $< | $(GPP_FILTER) | coffee -sc > $@
 
