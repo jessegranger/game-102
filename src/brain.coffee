@@ -1,9 +1,20 @@
+
+actIdle  = [0,0,0,0]
+actUp    = [1,0,0,0]
+actRight = [0,1,0,0]
+actDown  = [0,0,1,0]
+actLeft  = [0,0,0,1]
+actUpLeft = [1,0,0,1]
+actUpRight = [1,1,0,0]
+actDownLeft = [0,0,1,1]
+actDownRight = [0,1,1,0]
+
 class Impulse
 	constructor: (@unit) ->
 
 class ChaseImpulse extends Impulse
-	net = new synaptic.Architect.Liquid(8, 32, 4, 16, 4)
-	$.log "Training ChaseImpulse..."
+	net = new synaptic.Architect.Liquid 8, 32, 4, 16, 4
+	$.log "Training Chase..."
 	net.trainer.train trainingSet = [
 		{ input: [ 0,0,0,0,0,0,0,0 ], output: actIdle }
 		{ input: [ 1,0,0,0,0,0,0,0 ], output: actUp }
@@ -32,7 +43,7 @@ class ChaseImpulse extends Impulse
 
 class BorderImpulse extends Impulse
 	net = new synaptic.Architect.Liquid 4, 32, 4, 16, 4
-	$.log "Training BorderImpulse..."
+	$.log "Training Border..."
 	net.trainer.train trainingSet = [
 		{ input: [ 0,0,0,0 ], output: actIdle }
 		{ input: [ 1,0,0,0 ], output: actIdle }
@@ -50,13 +61,15 @@ class BorderImpulse extends Impulse
 
 class RushImpulse extends Impulse
 	net = new synaptic.Architect.Liquid 8, 32, 4, 16, 4
-	$.log "Training RushImpulse..."
+	$.log "Training Rush..."
 	net.trainer.train trainingSet = [
 		{ input: [ 0,0,0,0,0,0,0,0 ], output: actUp } # run forward when totally clear
 		{ input: [ 1,0,0,0,0,0,0,0 ], output: actRight }
 		{ input: [ 1,.5,0,0,0,0,0,1 ], output: actRight }
+		{ input: [ .5,1,0,0,0,0,0,1 ], output: actUp }
 		{ input: [ 0,1,0,0,0,0,0,0 ], output: actUpRight  }
 		{ input: [ 1,0,0,0,0,0,.5,1 ], output: actLeft }
+		{ input: [ 1,0,0,0,0,0,1,.5 ], output: actUpRight }
 		{ input: [ 0,0,1,0,0,0,0,0 ], output: actUp }
 		{ input: [ 0,0,0,1,0,0,0,0 ], output: actUp }
 		{ input: [ 0,0,0,0,1,0,0,0 ], output: actUp }
@@ -68,13 +81,12 @@ class RushImpulse extends Impulse
 		net.activate Float64Array.from \
 			@unit.getGrid frame, (obj) => obj.team? and obj.team isnt @unit.team
 
-$.log "Training finished..."
 class Brain
 	constructor: (@unit, impulses...) ->
 		@impulses = impulses.map (T) => new T @unit
 	react: (world, frame) ->
 		reaction = $.zeros(4)
-		n = 4
 		for impulse in @impulses
 			for x,i in impulse.react(world, frame).map $.random.coin
-				reaction[i] |= x
+				reaction[i] |= +x
+		reaction

@@ -3,7 +3,7 @@
 
 magn = (x,y) -> sqrt((x*x)+(y*y))
 
-#include "brain.coffee"
+#include "src/brain.coffee"
 
 fakeUnit = { x: 52.5, y: 50, getGrid: -> Float64Array.from [1,0,0,0,0,0,0,0] } 
 a = new Brain fakeUnit, ChaseImpulse
