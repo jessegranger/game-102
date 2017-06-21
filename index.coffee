@@ -5,11 +5,13 @@ magn = (x,y) -> sqrt((x*x)+(y*y))
 
 #include "brain.coffee"
 
-b = new Brain { getGrid: -> new Float64Array(8) }, RushImpulse, BorderImpulse
+fakeUnit = { x: 52.5, y: 50, getGrid: -> Float64Array.from [1,0,0,0,0,0,0,0] } 
+a = new Brain fakeUnit, ChaseImpulse
+b = new Brain fakeUnit, RushImpulse, BorderImpulse
 
-b.react {}, {}
+$.log "Chase reaction", a.react {}, {}
+$.log "Rush+Border reaction", b.react {}, {}
 
-return
 
 $.global.deg2rad = (d) -> d*2*PI/180
 $.global.rad2deg = (r) -> (r*180)/(2*PI)
@@ -403,11 +405,12 @@ world = {
 }
 
 zero2d = $(0,0)
+inputForceScale = 2/W
 getInputForce = (unit) ->
 	dx = Input.isKeyDown("MoveRight") - Input.isKeyDown("MoveLeft")
 	dy = Input.isKeyDown("MoveDown") - Input.isKeyDown("MoveUp")
 	return if dx isnt 0 or dy isnt 0
-		$(dx,dy).normalize().scale(unit.spd/750)
+		$(dx,dy).normalize().scale(unit.spd * inputForceScale)
 	else zero2d
 
 addForceToVelocity = (u, dx, dy, dt) ->
@@ -588,7 +591,7 @@ class Football
 class ActiveUnit extends Unit
 	constructor: (opts) ->
 		super opts
-		@brain = new Brain @, brains.runWithBall
+		@brain = new Brain @, RushImpulse, BorderImpulse
 	tick: (dt, frame) ->
 		nearest = @getNearest(frame)
 		if nearest[1] < .5
@@ -598,8 +601,7 @@ class ActiveUnit extends Unit
 		# if we press the AI key, let it control our movements
 		if Input.isKeyDown("UseAI")
 
-			state = @brain.perceive(frame)
-			[up, right, down, left] = @brain.react(state)
+			[up, right, down, left] = @brain.react(world, frame)
 
 			Input.setKeyDown("MoveUp", up)
 			Input.setKeyDown("MoveRight", right)
@@ -619,7 +621,7 @@ class AIUnit extends Unit
 	@tick_per_ms = 100
 	constructor: (opts) ->
 		super opts
-		@brain = new Brain @, brains.idle
+		@brain = new Brain @, ChaseImpulse
 		@ai_last_tick = 0
 	tick: (dt, frame) ->
 		if Input.isKeyDown("UseAI")
@@ -633,7 +635,7 @@ class AIUnit extends Unit
 		dx = right - left
 		dy = down - up
 		if dx isnt 0 or dy isnt 0
-			force = $(dx,dy).normalize().scale(@spd/750)
+			force = $(dx,dy).normalize().scale(@spd * inputForceScale)
 			addForceToVelocity @, force[0], force[1], dt
 
 
@@ -708,6 +710,7 @@ world.units.push fpsView = {
 		context.fillText "Percept: #{ player.brain.perceive(frame).map (f) -> f.toFixed(2) }", 10, 28
 }
 
+return
 
 last_tick = $.now
 tick = ->
