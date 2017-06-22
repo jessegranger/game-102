@@ -10,7 +10,7 @@ GPP_FILTER=sed -E 's/^	*\# .*$$//g' | $(GPP) $(GPP_OPTS)
 
 all: lib/index.js
 
-lib/index.js: src/index.coffee src/brain.coffee
+lib/index.js: src/index.coffee src/brain.coffee src/unit-types.coffee
 	@mkdir -p ./lib
-	@cat $< | $(GPP_FILTER) | coffee -sc > $@
+	@cat src/index.coffee | $(GPP_FILTER) | coffee -sc > $@
 
