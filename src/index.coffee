@@ -254,7 +254,6 @@ projectYardsToScreen = (x, y) -> [
 	((y + field.endzone) * pixelsPerYard) - Viewport.y
 ]
 
-
 drawUnit = (unit, context = viewContext) ->
 	[x, y] = projectYardsToScreen(unit.x, unit.y)
 	# $.log "x = (#{unit.x} * #{pixelsPerYard}) - #{Viewport.x} = #{x}"
@@ -321,25 +320,25 @@ paused = true
 openingTitles = {
 	elapsed: 0
 	fadeIn: (ms) ->
-		Math.min(1.0, (@frames[0]?[2] ? 0) / ms)
+		Math.min(1.0, (@cards[0]?[2] ? 0) / ms)
 	tick: (dt) ->
-		if frame = @frames[0]
+		if card = @cards[0]
 			# frame.elapsed ?= 0
 			# frame.elapsed += dt
-			frame[2] -= dt
+			card[2] -= dt
 			viewContext.fillRect 0, 0, W, H, 'black'
-			if frame[2] <= 0
-				@frames.shift()
+			if card[2] <= 0
+				@cards.shift()
 			else
 				viewContext.font = "#{floor yards 2}px sans-serif"
-				frame.width ?= viewContext.measureText(frame[0]).width
-				viewContext.fillStyle = "rgba(255,255,255,#{@fadeIn frame[1]})"
-				viewContext.fillText frame[0], Viewport.cx - (frame.width/2), Viewport.cy
+				card.width ?= viewContext.measureText(card[0]).width
+				viewContext.fillStyle = "rgba(255,255,255,#{@fadeIn card[1]})"
+				viewContext.fillText card[0], Viewport.cx - (card.width/2), Viewport.cy
 			true
 		else
 			false
-	frames: [
-		[ "Hold v to play", 200, 1800 ]
+	cards: [
+		[ "Touch or Space to Pause", 200, 1800 ]
 	]
 }
 
@@ -350,8 +349,6 @@ class Input
 	onDown = {}
 	onUp = {}
 	aliases = {}
-	@isKeyDown = (keyName) -> keysDown[keyName] ? false
-	@setKeyDown = (keyName, v) -> keysDown[keyName] = v
 	$(document.body).bind "keydown", (evt) ->
 		n = $.keyName evt.keyCode
 		for k in aliases[n] ? [n]
@@ -376,12 +373,15 @@ class Input
 		null
 	$(document.body).bind "keypress", (evt) -> evt.preventDefault()
 
-	@once =        (keyName, cb) -> (onceDown[keyName] or= $ []).push cb
+	@isKeyDown   = (keyName) -> keysDown[keyName] ? false
+	@setKeyDown  = (keyName, v) -> keysDown[keyName] = v
+	@once        = (keyName, cb) -> (onceDown[keyName] or= $ []).push cb
 	@onceRelease = (keyName, cb) -> (onceUp[keyName] or= $ []).push cb
-	@bind =        (keyName, cb) -> (onDown[keyName] or= $ []).push cb
-	@onRelease =   (keyName, cb) -> (onUp[keyName] or= $ []).push cb
-	@alias =       (from, to)    -> (aliases[from] or= $ [from]).push to
+	@bind        = (keyName, cb) -> (onDown[keyName] or= $ []).push cb
+	@onRelease   = (keyName, cb) -> (onUp[keyName] or= $ []).push cb
+	@alias       = (from, to)    -> (aliases[from] or= $ [from]).push to
 
+$.log "Creating world..."
 world = {
 	friction: .005
 	velocity: { max: 1, min: .0001 }
@@ -396,7 +396,7 @@ world = {
 			unit.draw(viewContext, frame)
 }
 
-zero2d = $(0,0)
+zero2d = $ [0,0]
 inputForceScale = 2/W
 getActionForce = (unit, action) ->
 	dx = action[1] - action[3] # Input.isKeyDown("MoveRight") - Input.isKeyDown("MoveLeft")
@@ -405,7 +405,10 @@ getActionForce = (unit, action) ->
 		$(dx,dy).normalize().scale(unit.spd * inputForceScale)
 	else zero2d
 
+isNumber = (n) -> isFinite(n) and not isNaN(n)
 addForceToVelocity = (u, dx, dy, dt) ->
+	unless isNumber(dx) and isNumber(dy) and isNumber(dt)
+		throw new Error("Invalid input to addForceToVelocity... #{dx} #{dy} #{dt}")
 	# scale the force based on duration
 	u.vx += dx * dt
 	u.vy += dy * dt
@@ -451,11 +454,23 @@ class Unit
 		@x = clamp @x, -10.0, field.width+10
 		@y = clamp @y, -10.0, field.length+10
 	tick: (dt, frame) ->
+		if not @blocked
+			@mode = 'walking'
+			nearest = @getNearest frame, (unit) =>
+				unit.team? and unit.team isnt @team
+			if nearest[1] < .5
+				@blocked = nearest[0]
+				@mode = 'blocking'
 		# if we press the AI key, let it control our movements
 		if Input.isKeyDown("UseAI")
 			@action = @brain.react world, frame
 		addForceToVelocity @, getActionForce(@, @action)..., dt
-		turnToFace @, @vx, @vy
+		if @blocked
+			@vx *= .01
+			@vy *= .01
+			turnToFace @, (@blocked.x - @x), (@blocked.y - @y)
+		else
+			turnToFace @, @vx, @vy
 		@x = clamp @x + @vx, -1.0, field.width+1
 		@y = clamp @y + @vy, -1.0, field.length+1
 		@elapsed += dt
@@ -463,10 +478,10 @@ class Unit
 		drawUnit @, context
 	drawShadow: (context) ->
 		context.beginPath()
-		context.fillStyle = 'rgba(0,0,0,.5)'
-		context.circle yards(@x), yards(@y), yards(1), 0, @*PI
-		context.fill()
+		context.circle yards(@x), yards(-@y), yards(.4), 0, @*PI
 		context.closePath()
+		context.fillStyle = 'rgba(0,0,0,.3)'
+		context.fill()
 	getGrid: (frame, filter) ->
 		ret = $ new Array 8
 		# 8 cells with values 0-1 (eventually)
@@ -494,14 +509,16 @@ class Unit
 		for v,i in ret
 			ret[i] = clamp 1 - ((v ? 150)/150), 0, 1 
 		ret
-	getNearest: (frame) ->
-		o = undefined
+	getNearest: (frame, filter) ->
 		n = Infinity
+		o = undefined
 		for [k, v] from frame.dist_sq.get(@).entries()
-			if v < n
-				v = n
+			if filter(k) and v < n
+				n = v
 				o = k
 		return [o, n]
+
+#include "src/unit-types.coffee"
 
 class Football
 	constructor: (opts) ->
@@ -556,17 +573,20 @@ class Football
 		context.translate x, y
 		if @r isnt 0
 			context.rotate @r
-		context.arc 0, 0, @radius, 0, 2*PI
+		r = @radius
+
+		context.beginPath()
+		context.arc 0, 0, r, 0, 2*PI
 		context.fillStyle = 'rgba(130, 60, 60, 1)'
 		context.fill()
 		context.closePath()
 
-		left = -@radius/4
-		right = @radius/4
-		top = -@radius/2
-		bottom = @radius/2
-		upper = -@radius/3
-		lower = @radius/3
+		left = -r/4
+		right = r/4
+		top = -r/2
+		bottom = r/2
+		upper = -r/3
+		lower = r/3
 		context.beginPath()
 		context.strokeStyle = 'white'
 		context.lineWidth = 1
@@ -582,7 +602,6 @@ class Football
 		context.closePath()
 
 		context.restore()
-	
 
 # ActiveUnit is the single player controlled by the human at the keyboard
 class ActiveUnit extends Unit
@@ -590,121 +609,101 @@ class ActiveUnit extends Unit
 		super opts
 		@brain = new Brain @, RushImpulse, BorderImpulse
 	tick: (dt, frame) ->
-		nearest = @getNearest(frame)
+		nearest = @getNearest frame, (unit) -> unit.team is teamTwo
 		if nearest[1] < .5
 			$.log "Collision:", nearest
+			$.delay 2000, =>
+				Input.setKeyDown "UseAI", true
+				reset(); resume()
 			return pause()
 
 		if not Input.isKeyDown "UseAI"
 			@action = [
-				+Input.isKeyDown "MoveUp",
-				+Input.isKeyDown "MoveRight"
-				+Input.isKeyDown "MoveDown"
-				+Input.isKeyDown "MoveLeft"
+				+Input.isKeyDown("MoveUp"),
+				+Input.isKeyDown("MoveRight"),
+				+Input.isKeyDown("MoveDown"),
+				+Input.isKeyDown("MoveLeft"),
 			]
 
-		super dt
-
-
+		super dt, frame
 
 	draw: (context) ->
 		scrollToYardline @y
 		super context
 
-class AIUnit extends Unit
-	@tick_per_ms = 100
-	constructor: (opts) ->
-		super opts
-		@brain = new Brain @, ChaseImpulse
-		@ai_last_tick = 0
-	tick: (dt, frame) ->
-		if Input.isKeyDown("UseAI")
-			if (ai_dt = @elapsed - @ai_last_tick) > AIUnit.tick_per_ms
-				@ai_last_tick = @elapsed
-				@ai_tick ai_dt, frame
-		super dt
-	ai_tick: (dt, frame) ->
-		[up, right, down, left] = @brain.react percept = @brain.perceive(frame)
-		$.log "percept:", percept
-		dx = right - left
-		dy = down - up
-		if dx isnt 0 or dy isnt 0
-			force = $(dx,dy).normalize().scale(@spd * inputForceScale)
-			addForceToVelocity @, force[0], force[1], dt
-
-
-world.units.push $.global.football = new Football({ x: 26, y: 75 })
-world.units.push $.global.player = new ActiveUnit {
-	x: 26, y: 80
-	spd: 0.7
-}
-
-class OffenseUnit extends AIUnit
-class DefenseUnit extends AIUnit
-
-class Lineman extends DefenseUnit
-	constructor: (opts) ->
-		opts.spd = clamp $.random.gaussian(.5, .1), 0.4, 0.7
-		super opts
-
-class Linebacker extends DefenseUnit
-	constructor: (opts) ->
-		opts.spd = clamp $.random.gaussian(.85, .1), 0.7, 0.95
-		super opts
-
-class Cornerback extends DefenseUnit
-	constructor: (opts) ->
-		opts.spd = clamp $.random.gaussian(.9, .07), 0.8, 1.0
-		super opts
-
-deployFormation = (cx, cy, formation, opts={}) ->
-	for {type, loc} in formation
-		for [x,y,r,stance] in loc
-			world.units.push new type $.extend {}, opts, {
-				x: cx+x, y: cy+y, r: r, stance: stance
-			}
-	null
-
-deployFormation 26, 75, [
-	{
-		type: Lineman,
-		loc: [
-			[ -3, -1, PI, 'low' ]
-			[ -1, -1, PI, 'low' ]
-			[  1, -1, PI, 'low' ]
-			[  3, -1, PI, 'low' ]
-		]
+do reset = ->
+	world.units = []
+	world.units.push $.global.football = new Football({ x: 26, y: 75 })
+	world.units.push $.global.player = new ActiveUnit {
+		x: 26, y: 80
+		spd: 0.8
 	}
-	{
-		type: Linebacker,
-		loc: [
-			[  0, -6, PI, 'mid' ]
-			[ -3, -5, PI, 'mid' ]
-			[  3, -5, PI, 'mid' ]
-		]
+
+	deployFormation = (cx, cy, formation, opts={}) ->
+		$.log "Deploying formation..."
+		for {type, loc} in formation
+			for [x,y,r,stance] in loc
+				world.units.push new type $.extend {}, opts, {
+					x: cx+x, y: cy+y, r: r, stance: stance
+				}
+		null
+
+	deployFormation 26, 75, [
+		{
+			type: Lineman,
+			loc: [
+				[ -3, -1, PI, 'low' ]
+				[ -1, -1, PI, 'low' ]
+				[  1, -1, PI, 'low' ]
+				[  3, -1, PI, 'low' ]
+			]
+		}
+		{
+			type: Linebacker,
+			loc: [
+				[  0, -6, PI, 'mid' ]
+				[ -3, -5, PI, 'mid' ]
+				[  3, -5, PI, 'mid' ]
+			]
+		}
+		{
+			type: Cornerback,
+			loc: [
+				[ -12, -3, PI, 'high' ]
+				[ 12, -3, PI, 'high' ]
+				[ -6, -20, PI, 'high' ]
+				[ 6, -20, PI, 'high' ]
+			]
+		}
+	], { team: teamTwo }
+
+	deployFormation 26, 75, [
+		{
+			type: OLineman,
+			loc: [
+				[ -2, 1, 0, 'low' ]
+				[  2, 1, 0, 'low' ]
+				[ -4, 1, 0, 'low' ]
+				[  4, 1, 0, 'low' ]
+			]
+		}
+	]
+
+	class FadeText
+		tick: (dt, frame) ->
+		draw: (context, frame) ->
+
+	world.units.push fpsView = {
+		tick: (dt, frame) -> @fps = 1000 / dt
+		draw: (context, frame) ->
+			context.fillStyle = 'black'
+			context.font = "#{floor yards .5}px sans-serif"
+			context.fillText "FPS: #{@fps.toFixed 2}", 10, 14
+			context.fillText "Percept: #{ player.brain.sense(world, frame).map((a) -> a.map((f) -> f.toFixed 2).join ', ').join ' : ' }", 10, 28
+			context.fillText "X: #{player.x.toFixed(2)} Y: #{player.y.toFixed 2}", 10, 42
+			context.fillText "VX: #{player.vx.toFixed(2)} VY: #{player.vy.toFixed 2}", 10, 56
 	}
-	{
-		type: Cornerback,
-		loc: [
-			[ -12, -3, PI, 'high' ]
-			[ 12, -3, PI, 'high' ]
-			[ -6, -20, PI, 'high' ]
-			[ 6, -20, PI, 'high' ]
-		]
-	}
-], { team: teamTwo }
-
-
-world.units.push fpsView = {
-	tick: (dt, frame) -> @fps = 1000 / dt
-	draw: (context, frame) ->
-		context.fillStyle = 'black'
-		context.font = "#{floor yards .5}px sans-serif"
-		context.fillText "FPS: #{@fps.toFixed 2}", 10, 14
-		context.fillText "Percept: #{ player.brain.perceive(frame).map (f) -> f.toFixed(2) }", 10, 28
-}
-
-return
+	football.hikeTo player
 
 last_tick = $.now
 tick = ->
@@ -713,6 +712,7 @@ tick = ->
 	# pre-compute the pair-wise distances,
 	# so we only have to do this once per frame
 	frame = {
+		dt: dt
 		dist_sq: dist_sq = new Map()
 	}
 	for obj in world.units
@@ -749,8 +749,10 @@ Input.alias "a", "MoveLeft"
 Input.alias "s", "MoveDown"
 Input.alias "d", "MoveRight"
 Input.alias "v", "UseAI"
-Input.once "v", ->
-	football.hikeTo player
+
+document.body.addEventListener "touchstart", resume
+document.body.addEventListener "touchend", pause
+
 Input.onRelease "v", ->
 	Input.setKeyDown "MoveUp", false
 	Input.setKeyDown "MoveRight", false
@@ -761,4 +763,3 @@ Input.onRelease "v", ->
 	null
 
 Input.setKeyDown "UseAI", true
-
