@@ -18,7 +18,7 @@ class Linebacker extends DefenseUnit
 
 class Cornerback extends DefenseUnit
 	constructor: (opts) ->
-		opts.spd = clamp $.random.gaussian(.9, .07), 0.8, 1.0
+		opts.spd = clamp $.random.gaussian(.65, .1), 0.6, .8
 		super opts
 		@brain = new Brain @, ChaseImpulse(player)
 
