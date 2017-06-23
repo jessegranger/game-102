@@ -48,4 +48,13 @@ So, if `precept = sense(world, frame)`, then the value in `percept[0]` refers to
 
 In most cases, you can think of the `percept` as the output of a range finder that can be set to look for certain things (opponents, the ball, the sidelines, etc), but can only describe it's output in this normalized octant resolution.
 
+After the Impulse reduces the world to a perception, it sends that perception to `react()` which returns a Float64Array(4).
+
+Each element of the reaction is interpreted as the probability of pressing a key, and a weighted coin is flipped.
+
+So, if `react() == [ .75 .15 .00 .50 ]`, this means a 75% chance of pressing the Up key, 15% chance of Right, 0% chance of Down, and 50% chance of Left.  Does not sum to 1.0, each key is evaluated independently.
+
+Once the reaction's uncertainty is reduced, the final reaction from a single impulse will be like: `[1 0 0 1]`.
+
+The Brain just uses a numerical 'or' operation to combine reactions right now (so a "respond to every impulse" strategy). This is obviously naive and produces stutter steps of indecision and some other things that while clearly not optimal, add some variety and arc to the game.
 
