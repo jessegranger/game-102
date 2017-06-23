@@ -93,10 +93,12 @@ class RushImpulse extends Impulse
 		{ input: [ 0,0,0,0,0,0,0,0 ], output: actUp } # run forward when totally clear
 		{ input: [ 1,0,0,0,0,0,0,0 ], output: actRight }
 		{ input: [ 1,.5,0,0,0,0,0,1 ], output: actRight }
-		{ input: [ .5,1,0,0,0,0,0,1 ], output: actUp }
+		{ input: [ .5,0,0,0,0,0,0,1 ], output: actLeft }
+		{ input: [ 1,0,0,0,0,0,0,.5 ], output: actRight }
+		# { input: [ .5,1,0,0,0,0,0,1 ], output: actUp }
 		{ input: [ 0,1,0,0,0,0,0,0 ], output: actUpRight  }
 		{ input: [ 1,0,0,0,0,0,.5,1 ], output: actLeft }
-		{ input: [ 1,0,0,0,0,0,1,.5 ], output: actUpRight }
+		# { input: [ 1,0,0,0,0,0,1,.5 ], output: actUpRight }
 		{ input: [ 0,0,1,0,0,0,0,0 ], output: actUp }
 		{ input: [ 0,0,0,1,0,0,0,0 ], output: actUp }
 		{ input: [ 0,0,0,0,1,0,0,0 ], output: actUp }
@@ -105,7 +107,7 @@ class RushImpulse extends Impulse
 		{ input: [ 0,0,0,0,0,0,0,1 ], output: actLeft }
 	]
 	sense: (world, frame) ->
-		@unit.getGrid frame, (obj) => obj.team? and obj.team isnt @unit.team
+		@unit.getGrid frame, (obj) => obj.team? and obj.team isnt @unit.team and not obj.blocked
 	react: (world, frame) ->
 		net.activate Float64Array.from @sense world, frame
 	retrain: -> net.trainer.train trainingSet
