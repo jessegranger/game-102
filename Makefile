@@ -14,3 +14,9 @@ lib/index.js: src/index.coffee src/brain.coffee src/unit-types.coffee
 	@mkdir -p ./lib
 	@cat src/index.coffee | $(GPP_FILTER) | coffee -sc > $@
 
+publish: .remote/lib/index.js .remote/index.html .remote/js/synaptic.js .remote/js/bling.js
+
+.remote/%: %
+	mkdir -p `dirname $@`
+	echo scp -Cr $< jldailey@blingjs.com:Projects/games/102/$<
+	touch $@
