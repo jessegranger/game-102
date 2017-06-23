@@ -2,6 +2,7 @@
 { round, pow, sin, sign, atan2, min, max, floor, ceil, abs, sqrt, PI } = Math
 
 magn = (x,y) -> sqrt((x*x)+(y*y))
+TWOPI = 2*PI
 
 #include "src/brain.coffee"
 
@@ -122,7 +123,7 @@ do drawTerrain = (context = terrainContext) ->
 	context.strokeRect 0, 0, W, yards(field.endzone), 7, 'white'
 	context.strokeRect 0, yards(field.length - field.endzone), W, yards(field.endzone), 7, 'white'
 
-	halfYard = yards(.3)
+	tickWidth = yards(.3)
 
 	# Draw each 5-yard line fully
 	context.beginPath()
@@ -130,10 +131,10 @@ do drawTerrain = (context = terrainContext) ->
 		y = yards (yard_line + field.endzone)
 		context.moveTo 0, y
 		context.lineTo W, y
-		context.moveTo yards(23), y-halfYard
-		context.lineTo yards(23), y+halfYard
-		context.moveTo yards(30), y-halfYard
-		context.lineTo yards(30), y+halfYard
+		context.moveTo yards(23), y-tickWidth
+		context.lineTo yards(23), y+tickWidth
+		context.moveTo yards(30), y-tickWidth
+		context.lineTo yards(30), y+tickWidth
 	context.closePath()
 	context.lineWidth = 3
 	context.strokeStyle = 'white'
@@ -148,27 +149,25 @@ do drawTerrain = (context = terrainContext) ->
 		y = yards (yard_line + field.endzone)
 		s = switch
 			when yard_line is 90
-				y = y - 19
 				(100 - yard_line) + right_arrow
 			when yard_line > 50
-				y = y - 21
 				(100 - yard_line) + right_arrow
 			when yard_line is 10
-				y = y - 50
 				left_arrow + yard_line
 			when yard_line < 50
-				y = y - 53
 				left_arrow + yard_line
 			when yard_line is 50
-				y = y - 52
 				left_arrow + yard_line + right_arrow
 		s = s.split('').join(" ")
 		context.save()
-		context.translate yards(field.width/4)-yards(.7), y
-		context.rotate PI/2
-		context.alignTextAt 0, 0, "left", s
-		context.translate 0, -yards(field.width/2)
-		context.alignTextAt 0, 0, "left", s
+		y -= yards(.2)
+		context.alignTextAt yards(field.width/6), y, "center", s
+		context.alignTextAt yards(5*field.width/6), y, "center", s
+		# context.translate yards(field.width/4)-yards(.7), y
+		# context.rotate PI/2
+		# context.alignTextAt 0, 0, "left", s
+		# context.translate 0, -yards(field.width/2)
+		# context.alignTextAt 0, 0, "left", s
 		context.restore()
 	
 	$.log "Drawing hash marks..."
@@ -212,9 +211,9 @@ foot_size = head_size*.4
 drawWalking = (unit, context) ->
 	h = head_size
 	walk_cycle = sin(unit.elapsed/110)
-	walk_magn = sqrt magn(unit.vx, unit.vy)
+	walk_magn = sqrt(magn(unit.vx, unit.vy))
 	reach = [
-		-yards(walk_cycle * walk_magn)
+		clamp -yards(walk_cycle * walk_magn), -1, 1
 		yards(walk_cycle * walk_magn)
 	]
 	if reach[0] or reach[1]
@@ -256,8 +255,6 @@ projectYardsToScreen = (x, y) -> [
 
 drawUnit = (unit, context = viewContext) ->
 	[x, y] = projectYardsToScreen(unit.x, unit.y)
-	# $.log "x = (#{unit.x} * #{pixelsPerYard}) - #{Viewport.x} = #{x}"
-	# $.log "y = ((#{unit.y} + #{field.endzone}) * #{pixelsPerYard}) - #{Viewport.y} = #{y}"
 	if 0 <= x <= Viewport.w and 0 <= y <= Viewport.h
 		context.save()
 		context.translate x, y
@@ -272,15 +269,15 @@ drawUnit = (unit, context = viewContext) ->
 
 		context.beginPath()
 		context.fillStyle = unit.team.colors[1]
-		context.circle -h, 0, s # left shoulder
-		context.circle h, 0, s # right shoulder
+		context.arc -h, 0, s, 0, TWOPI # left shoulder
+		context.arc h, 0, s, 0, TWOPI # right shoulder
 		context.fill()
 		context.closePath()
 
 		context.beginPath()
 		context.fillStyle = unit.team.colors[0]
 		context.strokeStyle = 'black'
-		context.circle 0, 0, h # head
+		context.arc 0, 0, h, 0, TWOPI # head
 		context.fill()
 		context.stroke()
 		context.closePath()
@@ -436,23 +433,37 @@ turnToFace = (u, x, y) ->
 
 class Unit
 	constructor: (opts) ->
-		$.extend @, {
-			x: field.width/2, y: 50
-			r: 0 # in radians
-			str: 0.5 # strength, 0 - 1.0
-			spd: 0.5
+		$.extend @, opts, {
+			r: 0 # rotation, in radians
 			team: teamOne
 			skin: $.random.element(skinShade)
 			vx: 0, vy: 0 # velocity
 			input: false
 			elapsed: 0
 			mode: 'walking'
-			action: actIdle
+			action: actIdle # an AI action, like [1 0 0 1] ([up right down left])
 		}, opts
-		@spd = clamp @spd, 0.0, 1.0
-		@str = clamp @str, 0.0, 1.0
-		@x = clamp @x, -10.0, field.width+10
-		@y = clamp @y, -10.0, field.length+10
+
+		$.defineProperty @, 'spd',
+			get: -> opts.spd
+			set: (v) -> opts.spd = clamp v, 0.0, 1.0
+		@spd ?= 0.5
+
+		$.defineProperty @, 'str',
+			get: -> opts.str
+			set: (v) -> opts.str = clamp v, 0.0, 1.0
+		@str ?= 0.5
+
+		$.defineProperty @, 'x',
+			get: -> opts.x
+			set: (v) -> opts.x = clamp v, -1.0, 54.0
+		@x ?= field.width/2
+
+		$.defineProperty @, 'y',
+			get: -> opts.y
+			set: (v) -> opts.y = clamp v, -1.0, 121.0
+		@y ?= 50
+
 	tick: (dt, frame) ->
 		if not @blocked
 			@mode = 'walking'
@@ -477,10 +488,12 @@ class Unit
 	draw: (context) ->
 		drawUnit @, context
 	drawShadow: (context) ->
+		[x, y] = projectYardsToScreen(@x, @y)
+		# if 0 <= x <= Viewport.w and 0 <= y <= Viewport.h
 		context.beginPath()
-		context.circle yards(@x), yards(-@y), yards(.4), 0, @*PI
+		context.arc x, y, yards(0.9), 0, @*PI
 		context.closePath()
-		context.fillStyle = 'rgba(0,0,0,.3)'
+		context.fillStyle = 'rgba(0,0,0,.2)'
 		context.fill()
 	getGrid: (frame, filter) ->
 		ret = $ new Array 8
@@ -609,7 +622,7 @@ class ActiveUnit extends Unit
 		super opts
 		@brain = new Brain @, RushImpulse, BorderImpulse
 	tick: (dt, frame) ->
-		nearest = @getNearest frame, (unit) -> unit.team is teamTwo
+		nearest = @getNearest frame, (unit) -> unit.team is teamTwo and not unit.blocked
 		if nearest[1] < .5
 			$.log "Collision:", nearest
 			$.delay 2000, =>
@@ -631,22 +644,22 @@ class ActiveUnit extends Unit
 		scrollToYardline @y
 		super context
 
+deployFormation = (cx, cy, formation, opts={}) ->
+	$.log "Deploying formation..."
+	for {type, loc} in formation
+		for [x,y,r,stance] in loc
+			world.units.push new type $.extend {}, opts, {
+				x: cx+x, y: cy+y, r: r, stance: stance
+			}
+	null
+
 do reset = ->
 	world.units = []
 	world.units.push $.global.football = new Football({ x: 26, y: 75 })
 	world.units.push $.global.player = new ActiveUnit {
 		x: 26, y: 80
-		spd: 0.8
+		spd: 0.65
 	}
-
-	deployFormation = (cx, cy, formation, opts={}) ->
-		$.log "Deploying formation..."
-		for {type, loc} in formation
-			for [x,y,r,stance] in loc
-				world.units.push new type $.extend {}, opts, {
-					x: cx+x, y: cy+y, r: r, stance: stance
-				}
-		null
 
 	deployFormation 26, 75, [
 		{
@@ -681,13 +694,15 @@ do reset = ->
 		{
 			type: OLineman,
 			loc: [
-				[ -2, 1, 0, 'low' ]
-				[  2, 1, 0, 'low' ]
-				[ -4, 1, 0, 'low' ]
-				[  4, 1, 0, 'low' ]
+				[ -1.5, 1, 0, 'low' ]
+				[  1.5, 1, 0, 'low' ]
+				[ -3, 1, 0, 'low' ]
+				[ 3, 1, 0, 'low' ]
+				[ -6, 1, 0, 'low' ]
+				[ 5, 1, 0, 'low' ]
 			]
 		}
-	]
+	], { team: teamOne }
 
 	class FadeText
 		tick: (dt, frame) ->
